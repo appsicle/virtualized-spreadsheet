@@ -46,13 +46,15 @@ function loadFromLocalStorage(): Cells {
   return map
 }
 
-function evaluateAndUpdate(state: SheetState, a1: A1) {
+function evaluateAndUpdate(state: SheetState, a1: A1, opts?: { useExistingAST?: boolean }) {
   const cell = state.cells.get(a1)
   if (!cell) return
   if (cell.input.startsWith('=')) {
     try {
-      cell.ast = parseFormula(cell.input)
-      const { value, deps } = evaluateAST(cell.ast, (id) => state.cells.get(id)?.value)
+      // During structural updates (row/col delete), we may provide a pre-rebased AST.
+      const ast = opts?.useExistingAST && cell.ast ? cell.ast : parseFormula(cell.input)
+      cell.ast = ast
+      const { value, deps } = evaluateAST(ast, (id) => state.cells.get(id)?.value)
       setDeps(state.graph, a1, deps)
       cell.value = value
     } catch {
@@ -71,14 +73,16 @@ function evaluateAndUpdate(state: SheetState, a1: A1) {
   }
 }
 
-function recalcAffected(state: SheetState, start: A1) {
-  const affected = affectedAfterChange(state.graph, start)
+function recalcAffected(state: SheetState, start: A1 | Set<A1>, opts?: { useExistingAST?: boolean }) {
+  const seeds: Set<A1> = start instanceof Set ? start : new Set([start])
+  const affected = new Set<string>()
+  for (const s of seeds) for (const n of affectedAfterChange(state.graph, s)) affected.add(n)
   const { order, cyclic } = topoOrder(state.graph, affected)
   for (const id of cyclic) {
     const c = state.cells.get(id)
     if (c) c.value = ERR.CYCLE
   }
-  for (const id of order) evaluateAndUpdate(state, id)
+  for (const id of order) evaluateAndUpdate(state, id as A1, { useExistingAST: opts?.useExistingAST })
 }
 
 type ReducerAction =
@@ -183,9 +187,12 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
       const s: SheetState = { ...state, cells: new Map(state.cells), graph: state.graph }
       if (input === '') {
         if (s.cells.has(a1)) {
+          // Capture dependents BEFORE removing from graph and include the changed id
+          const seeds = new Set<A1>(state.graph.dependentsOf.get(a1) as Set<A1> | undefined)
+          seeds.add(a1)
           s.cells.delete(a1)
           removeNode(s.graph, a1)
-          recalcAffected(s, a1)
+          recalcAffected(s, seeds, { useExistingAST: true })
           saveToLocalStorage(s.cells, state.isSmokeTestActive)
           dispatch({ t: 'setCells', cells: s.cells, graph: s.graph })
         }
@@ -207,6 +214,16 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
       // Incremental update: avoid rebuilding the entire graph/cell set
       const s: SheetState = { ...state, cells: new Map(state.cells), graph: state.graph }
 
+      // Collect seeds BEFORE mutating the graph (state.graph === s.graph)
+      const willChange = new Set<A1>()
+      for (const { a1 } of updates) willChange.add(a1)
+      const seeds = new Set<A1>()
+      for (const id of willChange) {
+        const dependents = state.graph.dependentsOf.get(id)
+        if (dependents) for (const d of dependents) seeds.add(d as A1)
+        seeds.add(id)
+      }
+
       const changed = new Set<A1>()
       for (const { a1, input } of updates) {
         changed.add(a1)
@@ -222,15 +239,7 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
         evaluateAndUpdate(s, a1)
       }
 
-      // Recalc union of affected nodes from the updated graph
-      const affected = new Set<A1>()
-      for (const id of changed) for (const n of affectedAfterChange(s.graph, id)) affected.add(n as A1)
-      const { order, cyclic } = topoOrder(s.graph, affected)
-      for (const id of cyclic) {
-        const c = s.cells.get(id)
-        if (c) c.value = ERR.CYCLE
-      }
-      for (const id of order) evaluateAndUpdate(s, id as A1)
+      recalcAffected(s, seeds, { useExistingAST: true })
 
       // Bump graph identity to notify context consumers without deep cloning maps
       const graphRef = { depsOf: s.graph.depsOf, dependentsOf: s.graph.dependentsOf }
@@ -267,7 +276,7 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
         if (newCell.ast) newCell.ast = rebaseAfterDeleteRow(newCell.ast, row)
         s.cells.set(newId, newCell)
       }
-      for (const [a1] of s.cells) evaluateAndUpdate(s, a1)
+      for (const [a1] of s.cells) evaluateAndUpdate(s, a1, { useExistingAST: true })
       dispatch({ t: 'setCells', cells: s.cells, graph: s.graph })
       saveToLocalStorage(s.cells, state.isSmokeTestActive)
     },
@@ -289,7 +298,7 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
         if (newCell.ast) newCell.ast = rebaseAfterDeleteCol(newCell.ast, col)
         s.cells.set(newId, newCell)
       }
-      for (const [a1] of s.cells) evaluateAndUpdate(s, a1)
+      for (const [a1] of s.cells) evaluateAndUpdate(s, a1, { useExistingAST: true })
       dispatch({ t: 'setCells', cells: s.cells, graph: s.graph })
       saveToLocalStorage(s.cells, state.isSmokeTestActive)
     },

@@ -29,6 +29,8 @@ export function evaluateAST(
     switch (n.type) {
       case 'num':
         return n.value
+      case 'error':
+        return n.code
       case 'ref':
         return read(n.a1)
       case 'range':

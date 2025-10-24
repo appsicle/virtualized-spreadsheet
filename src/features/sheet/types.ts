@@ -21,6 +21,7 @@ export type AST =
   | { type: 'range'; ref: RangeRef }
   | { type: 'bin'; op: '+' | '-' | '*' | '/'; left: AST; right: AST }
   | { type: 'call'; name: 'SUM' | 'AVG'; args: AST[] }
+  | { type: 'error'; code: ErrorCode }
 
 export type Graph = {
   depsOf: Map<string, Set<string>>
