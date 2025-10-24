@@ -16,18 +16,6 @@ export const ReadOnlyCell = memo(function ReadOnlyCell({
   offsetX,
   offsetY,
 }: ReadOnlyCellProps) {
-  // Track how many ReadOnlyCells are rendered
-  if (window.__readOnlyCellCount === undefined) {
-    window.__readOnlyCellCount = 0
-    if (import.meta.env.DEV) console.time('ReadOnlyCell:allRenders')
-  }
-  window.__readOnlyCellCount++
-
-  if (import.meta.env.DEV && window.__readOnlyCellCount === 863) {
-    console.timeEnd('ReadOnlyCell:allRenders')
-    console.log(`[ReadOnlyCell] Rendered ${window.__readOnlyCellCount} lightweight cells`)
-  }
-
   const display = value === undefined ? '' : String(value)
 
   return (

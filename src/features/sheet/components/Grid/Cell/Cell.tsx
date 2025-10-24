@@ -29,13 +29,6 @@ export const Cell = memo(function Cell({
   offsetX,
   offsetY,
 }: CellProps) {
-  // Track when full Cell component is rendered (should only be 1 for selected cell)
-  if (window.__fullCellCount === undefined) window.__fullCellCount = 0
-  window.__fullCellCount++
-  if (import.meta.env.DEV) {
-    console.log(`[Cell] Full editing cell rendered for ${a1} (count: ${window.__fullCellCount})`)
-  }
-
   const display = value === undefined ? '' : String(value)
   const [editValue, setEditValue] = useState<CellData>({ input: '' })
   const inputRef = useRef<HTMLInputElement>(null)
@@ -59,7 +52,7 @@ export const Cell = memo(function Cell({
     const el = inputRef.current
     if (el) {
       el.focus()
-      const len = editValue.input ? editValue.input.length : 0
+      const len = editValue.input?.length ?? 0
       try {
         el.setSelectionRange(len, len)
       } catch {

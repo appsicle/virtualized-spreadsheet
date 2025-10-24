@@ -6,7 +6,6 @@ export type SheetState = {
   cells: Cells
   graph: Graph
   selection: Selection
-  isSmokeTestActive: boolean
 }
 
 export type Actions = {

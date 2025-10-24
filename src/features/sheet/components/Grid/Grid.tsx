@@ -1,9 +1,14 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useEffect } from 'react'
 import { useSheetActions, useSheetState } from '@/features/sheet/hooks'
 import { CELL_H, CELL_W, HEADER_H, HEADER_W } from '@/features/sheet/constants'
 import { useDragSelect } from './Cell/hooks/useDragSelect'
 import { useClipboard } from './Cell/hooks/useClipboard'
-import { deleteColumn as doDeleteColumn, deleteRow as doDeleteRow, selectEntireColumn, selectEntireRow } from './utils/headerActions'
+import {
+  deleteColumn as doDeleteColumn,
+  deleteRow as doDeleteRow,
+  selectEntireColumn,
+  selectEntireRow,
+} from './utils/headerActions'
 import { useEditingActions, useEditingState } from '@/features/sheet/editing'
 import { useGridVirtualizers } from './hooks/useGridVirtualizers'
 import { useScrollTracking } from './hooks/useScrollTracking'
@@ -15,10 +20,8 @@ import { SelectionOverlay } from './SelectionOverlay'
 import { HeaderContextMenu } from './HeaderContextMenu'
 
 export default function Grid() {
-  console.log('[Grid] Render started, about to call useSheetState()')
-  const t0 = performance.now()
   const { dims, selection: storeSelection, cells } = useSheetState()
-  console.log(`[Grid] useSheetState() returned in ${(performance.now() - t0).toFixed(2)}ms`)
+
   const {
     setSelection: setSelectionAction,
     setSelectionRange,
@@ -51,6 +54,8 @@ export default function Grid() {
     cellH: CELL_H,
   })
   useClipboard(parentRef)
+
+  // No on-demand prefetch; hydration streams top-to-bottom in the store
 
   // Memoize callbacks to prevent unnecessary re-renders of GridCell
   const handleCellSelect = useCallback(

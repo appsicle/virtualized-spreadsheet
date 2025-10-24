@@ -34,25 +34,16 @@ export const VirtualCells = memo(function VirtualCells({
   onCellCommit,
   cellsVersion,
 }: VirtualCellsProps) {
-  console.log(`[VirtualCells] Rendering ${virtualCells.length} cells (cellsVersion: ${cellsVersion})`)
-  const t0 = performance.now()
   const editing = useEditingState()
 
   const result = (
     <>
-      {virtualCells.map((cell, index) => {
-        if (index === 0) {
-          console.log('[VirtualCells] Starting .map() iteration')
-        }
+      {virtualCells.map((cell) => {
 
         const a1 = `${indexToCol(cell.col)}${cell.row + 1}`
         const selected = selection.a1 === a1 && selection.editing
 
-        const t1 = performance.now()
         const value = getValue(a1)
-        if (index === 0) {
-          console.log(`[VirtualCells] First getValue() took ${(performance.now() - t1).toFixed(2)}ms`)
-        }
 
         const input = getCellInput(a1)
         const error = isError(value)
@@ -88,18 +79,5 @@ export const VirtualCells = memo(function VirtualCells({
       })}
     </>
   )
-
-  console.log(`[VirtualCells] Completed in ${(performance.now() - t0).toFixed(2)}ms`)
-
-  // Schedule a check to see when browser actually paints (after commit)
-  useEffect(() => {
-    const id = setTimeout(() => {
-      requestAnimationFrame(() => {
-        console.log('[VirtualCells] Browser paint cycle completed - cells should be visible!')
-      })
-    }, 0)
-    return () => clearTimeout(id)
-  }, [cellsVersion])
-
   return result
 })

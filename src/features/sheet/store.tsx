@@ -21,30 +21,14 @@ import {
 } from './utils/dependencyGraph'
 import { indexToCol } from './utils/refs'
 import { rebaseAfterDeleteRow, rebaseAfterDeleteCol } from './utils/rebase'
+import { RowWriteBuffer } from '@/persistence/RowWriteBuffer'
+import { countRowsBySheet, streamRowsBySheet } from '@/db/idb'
+
+const DEFAULT_SHEET_ID = 'default'
 
 const DEFAULT_DIMS: SheetDimensions = { rows: 1000, cols: 1000 }
 
-const KEY = 'spreadsheet:v1'
-
-function saveToLocalStorage(cells: Cells, isSmokeTestActive: boolean) {
-  if (isSmokeTestActive) return // Skip saving during smoke test
-  const obj: Record<string, { input: string }> = {}
-  for (const [k, v] of cells) if (v.input.length) obj[k] = { input: v.input }
-  localStorage.setItem(KEY, JSON.stringify(obj))
-}
-
-function loadFromLocalStorage(): Cells {
-  const s = localStorage.getItem(KEY)
-  const map: Cells = new Map()
-  if (!s) return map
-  try {
-    const obj = JSON.parse(s) as Record<string, { input: string }>
-    for (const [k, v] of Object.entries(obj)) map.set(k, { input: v.input })
-  } catch {
-    console.error('Error loading from localStorage', s)
-  }
-  return map
-}
+// No localStorage: all persistence via IndexedDB
 
 function evaluateAndUpdate(state: SheetState, a1: A1, opts?: { useExistingAST?: boolean }) {
   const cell = state.cells.get(a1)
@@ -97,7 +81,7 @@ type ReducerAction =
   | { t: 'setEditorSize'; size: { width: number; height: number } | null }
   | { t: 'setCells'; cells: Cells; graph?: Graph }
   | { t: 'setCellsBulk'; cells: Cells; graph: Graph }
-  | { t: 'setSmokeTest'; active: boolean }
+  
 
 function reducer(state: SheetState, action: ReducerAction): SheetState {
   switch (action.t) {
@@ -144,8 +128,7 @@ function reducer(state: SheetState, action: ReducerAction): SheetState {
     case 'setCellsBulk': {
       return { ...state, cells: action.cells, graph: action.graph }
     }
-    case 'setSmokeTest':
-      return { ...state, isSmokeTestActive: action.active }
+    
   }
 }
 
@@ -155,20 +138,86 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
     cells: new Map(),
     graph: newGraph(),
     selection: { a1: null, editing: false, anchor: null, focus: null, editorSize: null },
-    isSmokeTestActive: false,
   })
 
   // Use ref to keep stable reference to cells for getValue/getCellInput
   const cellsRef = useRef(state.cells)
   cellsRef.current = state.cells
 
+  // Buffered persistence to IndexedDB
+  const bufferRef = useRef<RowWriteBuffer | null>(null)
   useEffect(() => {
-    const cells = loadFromLocalStorage()
-    const graph = newGraph()
-    const init: SheetState = { ...state, cells, graph }
-    for (const [a1] of cells) evaluateAndUpdate(init, a1)
-    dispatch({ t: 'init', cells, graph })
+    const buf = new RowWriteBuffer({
+      sheetId: DEFAULT_SHEET_ID,
+      flushIntervalMs: 500, // interactive-friendly periodic flush
+      maxRowsPerTx: 5000,
+      minFlushRows: 1,
+      disableIdleFlush: false,
+    })
+    bufferRef.current = buf
+    return () => {
+      buf.shutdown().catch(() => {})
+      bufferRef.current = null
+    }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const count = await countRowsBySheet(DEFAULT_SHEET_ID)
+        if (cancelled) return
+        dispatch({ t: 'init', cells: new Map(), graph: newGraph() })
+        if (count === 0) return
+
+        let cells = new Map<A1, { input: string }>()
+        let graph = newGraph()
+        await streamRowsBySheet(DEFAULT_SHEET_ID, async (rows) => {
+          if (cancelled) return
+          const seeds = new Set<A1>()
+          for (const r of rows) {
+            for (const [col, input] of r.cells) {
+              const a1 = `${indexToCol(col)}${r.row + 1}` as A1
+              const prev = cells.get(a1)
+              if (!prev || prev.input !== input) {
+                cells.set(a1, { input })
+                seeds.add(a1)
+                const sLocal: SheetState = {
+                  dims: DEFAULT_DIMS,
+                  cells,
+                  graph,
+                  selection: { a1: null, editing: false, anchor: null, focus: null, editorSize: null },
+                }
+                evaluateAndUpdate(sLocal, a1)
+                graph = sLocal.graph
+              }
+            }
+          }
+          if (seeds.size > 0) {
+            const sLocal2: SheetState = {
+              dims: DEFAULT_DIMS,
+              cells,
+              graph,
+              selection: { a1: null, editing: false, anchor: null, focus: null, editorSize: null },
+            }
+            recalcAffected(sLocal2, seeds)
+            cells = new Map(sLocal2.cells)
+            graph = sLocal2.graph
+            const graphRef = { depsOf: graph.depsOf, dependentsOf: graph.dependentsOf } as unknown as Graph
+            dispatch({ t: 'setCellsBulk', cells, graph: graphRef })
+            await new Promise((r) => setTimeout(r, 0))
+          }
+        }, 50)
+      } catch (e) {
+        console.warn('IDB hydration failed', e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // No viewport prefetch function; sequential chunk hydration handles loading
 
   const setSelection = useCallback((a1: A1 | null, editing = false) => {
     dispatch({ t: 'setSelection', a1, editing })
@@ -199,7 +248,8 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
           s.cells.delete(a1)
           removeNode(s.graph, a1)
           recalcAffected(s, seeds, { useExistingAST: true })
-          saveToLocalStorage(s.cells, state.isSmokeTestActive)
+          // Persist delete to buffer
+          bufferRef.current?.enqueueDeleteA1(a1)
           dispatch({ t: 'setCells', cells: s.cells, graph: s.graph })
         }
         return
@@ -208,7 +258,8 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
       else s.cells.get(a1)!.input = input
       evaluateAndUpdate(s, a1)
       recalcAffected(s, a1)
-      saveToLocalStorage(s.cells, state.isSmokeTestActive)
+      // Persist put to buffer
+      bufferRef.current?.enqueuePutA1(a1, input)
       dispatch({ t: 'setCells', cells: s.cells })
     },
     [state]
@@ -237,12 +288,16 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
           if (s.cells.has(a1)) {
             s.cells.delete(a1)
             removeNode(s.graph, a1)
+            // Persist delete
+            bufferRef.current?.enqueueDeleteA1(a1)
           }
           continue
         }
         if (!s.cells.has(a1)) s.cells.set(a1, { input })
         else s.cells.get(a1)!.input = input
         evaluateAndUpdate(s, a1)
+        // Persist put
+        bufferRef.current?.enqueuePutA1(a1, input)
       }
 
       recalcAffected(s, seeds, { useExistingAST: true })
@@ -250,7 +305,6 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
       // Bump graph identity to notify context consumers without deep cloning maps
       const graphRef = { depsOf: s.graph.depsOf, dependentsOf: s.graph.dependentsOf }
 
-      saveToLocalStorage(s.cells, state.isSmokeTestActive)
       dispatch({ t: 'setCellsBulk', cells: s.cells, graph: graphRef as Graph })
     },
     [state]
@@ -282,10 +336,14 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
         }
         if (newCell.ast) newCell.ast = rebaseAfterDeleteRow(newCell.ast, row)
         s.cells.set(newId, newCell)
+        // Persist changes: if moved, delete old and put new; if unchanged, no-op
+        if (newId !== id) {
+          bufferRef.current?.enqueueDeleteA1(id)
+          bufferRef.current?.enqueuePutA1(newId as A1, newCell.input)
+        }
       }
       for (const [a1] of s.cells) evaluateAndUpdate(s, a1, { useExistingAST: true })
       dispatch({ t: 'setCells', cells: s.cells, graph: s.graph })
-      saveToLocalStorage(s.cells, state.isSmokeTestActive)
     },
     [state]
   )
@@ -304,19 +362,22 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
         if (colIdx > col) newId = `${indexToCol(colIdx - 1)}${r}`
         if (newCell.ast) newCell.ast = rebaseAfterDeleteCol(newCell.ast, col)
         s.cells.set(newId, newCell)
+        if (newId !== id) {
+          bufferRef.current?.enqueueDeleteA1(id)
+          bufferRef.current?.enqueuePutA1(newId as A1, newCell.input)
+        }
       }
       for (const [a1] of s.cells) evaluateAndUpdate(s, a1, { useExistingAST: true })
       dispatch({ t: 'setCells', cells: s.cells, graph: s.graph })
-      saveToLocalStorage(s.cells, state.isSmokeTestActive)
     },
     [state]
   )
 
   const clearAll = useCallback(() => {
     const s: SheetState = { ...state, cells: new Map(), graph: newGraph() }
-    localStorage.removeItem(KEY)
+    // Persist deletes for all existing cells
+    for (const [a1] of state.cells) bufferRef.current?.enqueueDeleteA1(a1)
     dispatch({ t: 'setCells', cells: s.cells, graph: s.graph })
-    dispatch({ t: 'setSmokeTest', active: false })
   }, [state])
 
   const smokeTest = useCallback(() => {
@@ -325,9 +386,6 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
     const totalCols = state.dims.cols
     const totalCells = totalRows * totalCols
     console.log(`Starting smoke test: ${totalRows} rows × ${totalCols} cols = ${totalCells.toLocaleString()} cells`)
-
-    // Set smoke test flag to prevent localStorage saves
-    dispatch({ t: 'setSmokeTest', active: true })
 
     // Step 1: Generate values using Float64Array (fast single allocation)
     const data = new Float64Array(totalCells)
@@ -354,9 +412,19 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
     const graph = newGraph()
     console.log('[smokeTest] Scheduling dispatch on next tick...')
 
-    setTimeout(() => {
+    setTimeout(async () => {
       console.log('[smokeTest] Dispatching state update...')
       dispatch({ t: 'setCellsBulk', cells, graph })
+      // Enqueue all generated cells for persistence (batched via buffer)
+      const buf = bufferRef.current
+      if (buf) {
+        // Enter bulk policy for max throughput
+        buf.setPolicy({ flushIntervalMs: null, minFlushRows: 10000, maxRowsPerTx: 10000, disableIdleFlush: true })
+        buf.enqueueBulkFromCellsMap(cells)
+        await buf.flush('smoke')
+        // Restore interactive policy
+        buf.setPolicy({ flushIntervalMs: 500, minFlushRows: 1, maxRowsPerTx: 5000, disableIdleFlush: false })
+      }
       const elapsed = performance.now() - t0
       console.log(`Smoke test complete! ${totalCells.toLocaleString()} cells in ${elapsed.toFixed(2)}ms`)
 
