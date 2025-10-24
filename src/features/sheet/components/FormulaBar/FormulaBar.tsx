@@ -26,9 +26,11 @@ function FormulaBar() {
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value
     if (!selection.a1) return
-    if (!selection.editing) setSelection(selection.a1, true)
+    // Update editing context first so Grid cells see editing.source === 'formula'
     if (!editing.a1 || editing.a1 !== selection.a1) startEdit(selection.a1, val, 'formula')
     else changeBuffer(val, 'formula')
+    // Then mark selection as editing (if not already)
+    if (!selection.editing) setSelection(selection.a1, true)
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -47,6 +49,17 @@ function FormulaBar() {
       endEdit()
       e.preventDefault()
     }
+  }
+
+  function handleBlur() {
+    if (!selection.a1) return
+    // If actively editing a formula and user clicks into grid to insert refs, don't auto-commit
+    if (editing.a1 === selection.a1 && editing.buffer?.startsWith('=')) return
+    const buf = editing.a1 === selection.a1 ? editing.buffer : committed
+    setCellInput(selection.a1, buf)
+    // Keep selection on current cell; simply exit edit mode
+    setSelection(selection.a1, false)
+    endEdit()
   }
 
   return (
@@ -71,6 +84,7 @@ function FormulaBar() {
         value={selection.editing && editing.a1 === selection.a1 ? editing.buffer : committed}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
         placeholder="Enter value or =formula"
       />
     </div>

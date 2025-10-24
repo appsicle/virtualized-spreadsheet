@@ -51,21 +51,22 @@ export const Cell = memo(function Cell({
     }
   }, [selected])
 
-  // Focus input when entering edit mode
+  // Focus input when entering edit mode.
+  // If editing originated from the Formula Bar, do not steal focus away from it.
   useEffect(() => {
-    if (selected) {
-      const el = inputRef.current
-      if (el) {
-        el.focus()
-        const len = editValue.input?.length ?? 0
-        try {
-          el.setSelectionRange(len, len)
-        } catch {
-          console.error('Error setting selection range')
-        }
+    if (!selected) return
+    if (editing.a1 === a1 && editing.source === 'formula') return
+    const el = inputRef.current
+    if (el) {
+      el.focus()
+      const len = editValue.input?.length ?? 0
+      try {
+        el.setSelectionRange(len, len)
+      } catch {
+        console.error('Error setting selection range')
       }
     }
-  }, [selected, editValue.input])
+  }, [selected, editValue.input, editing.a1, editing.source, a1])
 
   // Keep local edit value in sync with Formula Bar edits
   useEffect(() => {

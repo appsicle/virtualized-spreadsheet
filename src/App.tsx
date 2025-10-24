@@ -20,6 +20,14 @@ function Shell() {
   const { startEdit } = useEditingActions()
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      // If user is typing in an editable element (Formula Bar or any input/textarea/contenteditable),
+      // do not intercept the keystroke for grid-level shortcuts.
+      const target = e.target as HTMLElement | null
+      const active = (document.activeElement as HTMLElement | null) || null
+      const isEditable = (el: HTMLElement | null) =>
+        !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+      if (isEditable(target) || isEditable(active)) return
+
       if (!selection.a1) return
       const addr = selection.a1
       if (e.key === 'Enter') {
@@ -64,8 +72,9 @@ function Shell() {
             return
           }
           if (e.key.length === 1) {
-            setSelection(addr, true)
+            // Start editing context first to avoid focus races, then mark selection editing
             startEdit(addr, e.key, 'keyboard')
+            setSelection(addr, true)
             e.preventDefault()
             return
           }
