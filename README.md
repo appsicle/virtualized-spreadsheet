@@ -1,73 +1,69 @@
-# React + TypeScript + Vite
+# Spreadsheet (React + TypeScript + Vite)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Fast, virtualized spreadsheet prototype with a minimal formula engine, dependency graph, and robust editing UX.
 
-Currently, two official plugins are available:
+**Run It**
+- Prerequisites: Node.js 18+ and npm 9+
+- Install deps: `npm install`
+- Start dev server: `npm run dev` (opens on http://localhost:5173)
+- Build for production: `npm run build`
+- Preview the build: `npm run preview`
+- Lint: `npm run lint`
+- Format: `npm run format`
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Vite alias `@` points to `src/` (see `vite.config.ts`).
 
-## React Compiler
+**Core Decisions**
+- Architecture: feature‑first. Spreadsheet logic is encapsulated in `src/features/sheet`.
+  - UI: `src/features/sheet/components` (Grid, Header menus, Formula/Status/Toolbar)
+  - State: `src/features/sheet/store.tsx`, `src/features/sheet/context.ts`, `src/features/sheet/hooks.ts`
+  - Formula engine: `src/features/sheet/utils` (parser, tokenizer, evaluator, graph, refs)
+  - Constants: `src/features/sheet/constants.ts` (`CELL_W`, `CELL_H`, `HEADER_W`, `HEADER_H`)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Dependency graph + recompute:
+  - Each formula evaluation returns its referenced cells (deps). We update edges with `setDeps` and recompute affected nodes in topological order.
+  - Files: `src/features/sheet/utils/dependencyGraph.ts` and `src/features/sheet/store.tsx`.
 
-## Expanding the ESLint configuration
+- Error semantics:
+  - `#DIV/0!`, `#VALUE!` returned from evaluator (`src/features/sheet/utils/evaluator.ts`).
+  - `#CYCLE` on topological cycles (`topoOrder` returns a cyclic set).
+  - `#REF!` for structural deletes (row/column). We rebase ASTs so refs/ranges that hit a deleted axis become error nodes. Files: `src/features/sheet/utils/rebase.ts`, `src/features/sheet/utils/evaluator.ts`.
+  - Clearing a referenced cell (Backspace/Delete on a value) is not structural; formulas recompute with blanks coerced to 0.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- Virtualization:
+  - Uses TanStack Virtual for rows/columns. Hooks compute visible cells and absolute positioning. Files: `src/features/sheet/components/Grid/hooks/*`.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Editing model:
+  - Local editing buffer via `EditingProvider` to keep Formula Bar and Cell input in sync. Files: `src/features/sheet/editing.tsx`.
+  - Grid handles keyboard nav, range selection, ref/range insertion during formula edits.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- Persistence:
+  - Minimal localStorage snapshot of `input` strings under key `spreadsheet:v1`. File: `src/features/sheet/store.tsx`.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+**File Map (Selected)**
+- App entry: `src/App.tsx` (wires `SheetProvider` and `EditingProvider`)
+- Feature barrel: `src/features/sheet/index.ts`
+- Grid: `src/features/sheet/components/Grid/Grid.tsx`
+- Virtual cells: `src/features/sheet/components/Grid/VirtualCells.tsx`
+- Cell components: `src/features/sheet/components/Grid/Cell/*`
+- Selection utils: `src/features/sheet/components/Grid/Cell/utils/*`
+- Graph ops: `src/features/sheet/utils/dependencyGraph.ts`
+- Parser/tokenizer: `src/features/sheet/utils/{parser,tokenizer}.ts`
+- Evaluator: `src/features/sheet/utils/evaluator.ts`
+- Rebase on delete: `src/features/sheet/utils/rebase.ts`
+- A1 helpers: `src/features/sheet/utils/refs.ts`
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+**Conventions**
+- Keep UI components pure; side effects and state changes flow through store actions.
+- Prefer granular hooks (`useSelection`, `useCells`, `useDims`, `useGraph`) to minimize re‑renders.
+- Co-locate domain logic inside feature folders. Shared, generic UI would live under `src/components/ui` (not yet needed here).
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+**Scripts**
+- `dev`: start Vite dev server
+- `build`: type-check + bundling (rolldown-vite under the hood)
+- `preview`: serve the production bundle locally
+- `lint`, `format`, `format:check`: repo hygiene
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+**Notes**
+- This repo removed dev‑only instrumentation from `index.html` (no remote scripts by default).
+- Path alias `@/*` is configured in both `vite.config.ts` and `tsconfig.app.json`.
