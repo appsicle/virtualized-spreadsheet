@@ -13,12 +13,16 @@ export function useClipboard(containerRef: React.RefObject<HTMLElement | null>) 
     function onCopy(e: ClipboardEvent) {
       if (!selection.a1) return
       const text = selectionToText(cells, selection)
-      e.clipboardData?.setData('text/plain', text)
+      const data = e.clipboardData
+      if (!data) return
+      data.setData('text/plain', text)
       e.preventDefault()
     }
 
     function onPaste(e: ClipboardEvent) {
-      const text = e.clipboardData?.getData('text/plain')
+      const data = e.clipboardData
+      if (!data) return
+      const text = data.getData('text/plain')
       if (!text || !selection.a1) return
       pasteTextAtSelection(text, selection, dims, setCellsBulk)
       e.preventDefault()
@@ -27,7 +31,9 @@ export function useClipboard(containerRef: React.RefObject<HTMLElement | null>) 
     function onCut(e: ClipboardEvent) {
       if (!selection.a1) return
       const text = selectionToText(cells, selection)
-      e.clipboardData?.setData('text/plain', text)
+      const data = e.clipboardData
+      if (!data) return
+      data.setData('text/plain', text)
       // Clear range after copying to clipboard
       clearSelectionContents(selection, setCellsBulk)
       e.preventDefault()

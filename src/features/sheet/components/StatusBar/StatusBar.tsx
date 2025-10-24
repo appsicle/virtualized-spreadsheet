@@ -17,7 +17,7 @@ function StatusBar() {
         color: '#6b7280',
       }}
     >
-      <div>Selected: {selection.a1 ?? '—'}</div>
+      <div>Selected: {selection.a1 ? selection.a1 : '—'}</div>
       <div>Value: {value === undefined ? '—' : String(value)}</div>
       <div>{isError(value) ? 'Error' : ''}</div>
     </div>

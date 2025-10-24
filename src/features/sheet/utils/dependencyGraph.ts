@@ -5,7 +5,8 @@ export function newGraph(): Graph {
 }
 
 export function setDeps(g: Graph, a: string, deps: Set<string>) {
-  const old = g.depsOf.get(a) ?? new Set<string>()
+  const oldLookup = g.depsOf.get(a)
+  const old = oldLookup ? oldLookup : new Set<string>()
   for (const d of old) {
     const rev = g.dependentsOf.get(d)
     if (rev) {
@@ -16,19 +17,26 @@ export function setDeps(g: Graph, a: string, deps: Set<string>) {
   g.depsOf.set(a, new Set(deps))
   for (const d of deps) {
     if (!g.dependentsOf.has(d)) g.dependentsOf.set(d, new Set())
-    g.dependentsOf.get(d)!.add(a)
+    const set = g.dependentsOf.get(d)!
+    set.add(a)
   }
 }
 
 export function removeNode(g: Graph, a: string) {
   const deps = g.depsOf.get(a)
   if (deps) {
-    for (const d of deps) g.dependentsOf.get(d)?.delete(a)
+    for (const d of deps) {
+      const revSet = g.dependentsOf.get(d)
+      if (revSet) revSet.delete(a)
+    }
     g.depsOf.delete(a)
   }
   const rev = g.dependentsOf.get(a)
   if (rev) {
-    for (const r of rev) g.depsOf.get(r)?.delete(a)
+    for (const r of rev) {
+      const depSet = g.depsOf.get(r)
+      if (depSet) depSet.delete(a)
+    }
     g.dependentsOf.delete(a)
   }
 }
@@ -40,7 +48,10 @@ export function affectedAfterChange(g: Graph, start: string): Set<string> {
     const x = q.shift()!
     if (out.has(x)) continue
     out.add(x)
-    for (const dep of g.dependentsOf.get(x) ?? []) q.push(dep)
+    {
+      const deps = g.dependentsOf.get(x)
+      for (const dep of deps ? deps : []) q.push(dep)
+    }
   }
   return out
 }
@@ -49,7 +60,10 @@ export function topoOrder(g: Graph, nodes: Set<string>): { order: string[]; cycl
   const inDeg = new Map<string, number>()
   for (const n of nodes) {
     let deg = 0
-    for (const d of g.depsOf.get(n) ?? []) if (nodes.has(d)) deg++
+    {
+      const deps = g.depsOf.get(n)
+      for (const d of deps ? deps : []) if (nodes.has(d)) deg++
+    }
     inDeg.set(n, deg)
   }
   const q: string[] = []
@@ -58,11 +72,14 @@ export function topoOrder(g: Graph, nodes: Set<string>): { order: string[]; cycl
   while (q.length) {
     const n = q.shift()!
     order.push(n)
-    for (const dep of g.dependentsOf.get(n) ?? []) {
-      if (!nodes.has(dep)) continue
-      const d = inDeg.get(dep)!
-      inDeg.set(dep, d - 1)
-      if (d - 1 === 0) q.push(dep)
+    {
+      const deps = g.dependentsOf.get(n)
+      for (const dep of deps ? deps : []) {
+        if (!nodes.has(dep)) continue
+        const d = inDeg.get(dep)!
+        inDeg.set(dep, d - 1)
+        if (d - 1 === 0) q.push(dep)
+      }
     }
   }
   const cyclic = new Set<string>()

@@ -15,8 +15,8 @@ export const SelectionOverlay = memo(function SelectionOverlay({
     return null
   }
 
-  const a = selection.anchor ?? selection.a1
-  const f = selection.focus ?? selection.a1
+  const a = selection.anchor !== undefined && selection.anchor !== null ? selection.anchor : selection.a1
+  const f = selection.focus !== undefined && selection.focus !== null ? selection.focus : selection.a1
   const mA = /^([A-Z]+)(\d+)$/.exec(a!)!
   const mF = /^([A-Z]+)(\d+)$/.exec(f!)!
   const colA = [...mA[1]].reduce((acc, ch) => acc * 26 + (ch.charCodeAt(0) - 64), 0) - 1

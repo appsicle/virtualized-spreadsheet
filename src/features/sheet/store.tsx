@@ -29,7 +29,7 @@ const KEY = 'spreadsheet:v1'
 function saveToLocalStorage(cells: Cells, isSmokeTestActive: boolean) {
   if (isSmokeTestActive) return // Skip saving during smoke test
   const obj: Record<string, { input: string }> = {}
-  for (const [k, v] of cells) if (v.input?.length) obj[k] = { input: v.input }
+  for (const [k, v] of cells) if (v.input.length) obj[k] = { input: v.input }
   localStorage.setItem(KEY, JSON.stringify(obj))
 }
 
@@ -52,9 +52,12 @@ function evaluateAndUpdate(state: SheetState, a1: A1, opts?: { useExistingAST?: 
   if (cell.input.startsWith('=')) {
     try {
       // During structural updates (row/col delete), we may provide a pre-rebased AST.
-      const ast = opts?.useExistingAST && cell.ast ? cell.ast : parseFormula(cell.input)
+      const ast = (opts && opts.useExistingAST && cell.ast) ? cell.ast : parseFormula(cell.input)
       cell.ast = ast
-      const { value, deps } = evaluateAST(ast, (id) => state.cells.get(id)?.value)
+      const { value, deps } = evaluateAST(ast, (id) => {
+        const c = state.cells.get(id)
+        return c ? c.value : undefined
+      })
       setDeps(state.graph, a1, deps)
       cell.value = value
     } catch {
@@ -82,7 +85,8 @@ function recalcAffected(state: SheetState, start: A1 | Set<A1>, opts?: { useExis
     const c = state.cells.get(id)
     if (c) c.value = ERR.CYCLE
   }
-  for (const id of order) evaluateAndUpdate(state, id as A1, { useExistingAST: opts?.useExistingAST })
+  const useExisting = opts ? opts.useExistingAST : undefined
+  for (const id of order) evaluateAndUpdate(state, id as A1, { useExistingAST: useExisting })
 }
 
 type ReducerAction =
@@ -136,7 +140,7 @@ function reducer(state: SheetState, action: ReducerAction): SheetState {
     case 'setEditorSize':
       return { ...state, selection: { ...state.selection, editorSize: action.size } }
     case 'setCells':
-      return { ...state, cells: action.cells, graph: action.graph ?? state.graph }
+      return { ...state, cells: action.cells, graph: action.graph !== undefined ? action.graph : state.graph }
     case 'setCellsBulk': {
       return { ...state, cells: action.cells, graph: action.graph }
     }
@@ -188,7 +192,9 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
       if (input === '') {
         if (s.cells.has(a1)) {
           // Capture dependents BEFORE removing from graph and include the changed id
-          const seeds = new Set<A1>(state.graph.dependentsOf.get(a1) as Set<A1> | undefined)
+          const seeds = new Set<A1>()
+          const dependents = state.graph.dependentsOf.get(a1)
+          if (dependents) for (const d of dependents) seeds.add(d as A1)
           seeds.add(a1)
           s.cells.delete(a1)
           removeNode(s.graph, a1)
@@ -251,12 +257,13 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
   )
 
   const getValue = useCallback((a1: A1) => {
-    return cellsRef.current.get(a1)?.value
+    const c = cellsRef.current.get(a1)
+    return c ? c.value : undefined
   }, [])
 
   const getCellInput = useCallback((a1: A1) => {
     const cell = cellsRef.current.get(a1)
-    return cell?.input ?? ''
+    return cell ? cell.input : ''
   }, [])
 
   const deleteRow = useCallback(

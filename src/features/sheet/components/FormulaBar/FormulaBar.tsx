@@ -10,10 +10,11 @@ function FormulaBar() {
   const editing = useEditingState()
   const { startEdit, changeBuffer, endEdit } = useEditingActions()
 
-  const committed = useMemo(
-    () => (selection.a1 ? (cells.get(selection.a1)?.input ?? '') : ''),
-    [cells, selection]
-  )
+  const committed = useMemo(() => {
+    if (!selection.a1) return ''
+    const c = cells.get(selection.a1)
+    return c ? (c.input !== undefined && c.input !== null ? c.input : '') : ''
+  }, [cells, selection])
 
   // Keep buffer matched with selection
   useEffect(() => {
@@ -54,7 +55,7 @@ function FormulaBar() {
   function handleBlur() {
     if (!selection.a1) return
     // If actively editing a formula and user clicks into grid to insert refs, don't auto-commit
-    if (editing.a1 === selection.a1 && editing.buffer?.startsWith('=')) return
+    if (editing.a1 === selection.a1 && editing.buffer.startsWith('=')) return
     const buf = editing.a1 === selection.a1 ? editing.buffer : committed
     setCellInput(selection.a1, buf)
     // Keep selection on current cell; simply exit edit mode

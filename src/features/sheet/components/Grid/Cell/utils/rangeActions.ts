@@ -13,8 +13,8 @@ export function parseTSV(text: string): string[][] {
 export function getSelectionBounds(selection: Selection):
   | { rMin: number; rMax: number; cMin: number; cMax: number }
   | null {
-  const anchor = selection.anchor ?? selection.a1
-  const focus = selection.focus ?? selection.a1
+  const anchor = selection.anchor !== undefined && selection.anchor !== null ? selection.anchor : selection.a1
+  const focus = selection.focus !== undefined && selection.focus !== null ? selection.focus : selection.a1
   if (!anchor || !focus) return null
   const a = addrOf(anchor)
   const f = addrOf(focus)
@@ -35,7 +35,8 @@ export function selectionToText(cells: Cells, selection: Selection): string {
     let k = 0
     for (let c = b.cMin; c <= b.cMax; c++) {
       const id = a1Of({ row: r, col: c })
-      rowBuf[k++] = cells.get(id)?.input ?? ''
+      const cell = cells.get(id)
+      rowBuf[k++] = cell ? (cell.input !== undefined && cell.input !== null ? cell.input : '') : ''
     }
     lines.push(rowBuf.join('\t'))
   }
@@ -80,7 +81,7 @@ export function pasteTextAtSelection(
   dims: SheetDimensions,
   setCellsBulk: (updates: Array<{ a1: string; input: string }>) => void
 ) {
-  const anchor = selection.anchor ?? selection.a1
+  const anchor = selection.anchor !== undefined && selection.anchor !== null ? selection.anchor : selection.a1
   if (!anchor) return
   const a = addrOf(anchor)
   const rows = parseTSV(text)

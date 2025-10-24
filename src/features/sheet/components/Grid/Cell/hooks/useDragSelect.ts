@@ -77,7 +77,7 @@ export function useDragSelect(params: {
     // Prevent native text selection start
     e.preventDefault()
     // If currently editing a formula, use clicks to insert refs/ranges instead of changing selection
-    const isEditingFormula = selection.editing && editing.buffer?.startsWith('=')
+    const isEditingFormula = selection.editing && editing.buffer.startsWith('=')
     if (isEditingFormula && editing.a1) {
       // Begin formula ref/range insertion
       const addr = /([A-Z]+)(\d+)/.exec(a1)!
@@ -95,7 +95,7 @@ export function useDragSelect(params: {
       return
     }
     // For normal selection flows, focus container to capture keyboard nav
-    params.containerRef.current?.focus()
+    params.containerRef.current.focus()
     if (e.shiftKey && selection.anchor) {
       setSelectionRange(selection.anchor, a1)
       setSelection(a1, false)

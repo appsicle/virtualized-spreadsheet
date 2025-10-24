@@ -30,11 +30,11 @@ export const Cell = memo(function Cell({
   offsetY,
 }: CellProps) {
   // Track when full Cell component is rendered (should only be 1 for selected cell)
-  if (!(window as any).__fullCellCount) {
-    (window as any).__fullCellCount = 0
+  if (window.__fullCellCount === undefined) window.__fullCellCount = 0
+  window.__fullCellCount++
+  if (import.meta.env.DEV) {
+    console.log(`[Cell] Full editing cell rendered for ${a1} (count: ${window.__fullCellCount})`)
   }
-  ;(window as any).__fullCellCount++
-  console.log(`[Cell] Full editing cell rendered for ${a1} (count: ${(window as any).__fullCellCount})`)
 
   const display = value === undefined ? '' : String(value)
   const [editValue, setEditValue] = useState<CellData>({ input: '' })
@@ -59,7 +59,7 @@ export const Cell = memo(function Cell({
     const el = inputRef.current
     if (el) {
       el.focus()
-      const len = editValue.input?.length ?? 0
+      const len = editValue.input ? editValue.input.length : 0
       try {
         el.setSelectionRange(len, len)
       } catch {
@@ -92,7 +92,7 @@ export const Cell = memo(function Cell({
     if (selected) {
       // If actively editing a formula and the user clicks elsewhere to insert refs,
       // do not auto-commit on blur.
-      if (editing.a1 === a1 && editing.buffer?.startsWith('=')) return
+      if (editing.a1 === a1 && editing.buffer.startsWith('=')) return
       onCommit(a1, editValue.input)
       endEdit()
       // Move selection to cell below after commit
@@ -117,7 +117,7 @@ export const Cell = memo(function Cell({
       onMouseDown={(e) => {
         if (!selected) {
           // If currently editing a formula in another cell, use clicks for ref insertion
-          if (editing.a1 && editing.buffer?.startsWith('=')) {
+          if (editing.a1 && editing.buffer.startsWith('=')) {
             // Prevent selection change so Grid hook can handle formula ref insertion
             e.preventDefault()
             return
@@ -127,7 +127,7 @@ export const Cell = memo(function Cell({
       }}
       onDoubleClick={() => {
         // If currently editing a formula in another cell, ignore double click
-        if (editing.a1 && editing.a1 !== a1 && editing.buffer?.startsWith('=')) return
+        if (editing.a1 && editing.a1 !== a1 && editing.buffer.startsWith('=')) return
         if (!selected) onSelect(a1, true)
         if (editing.a1 !== a1) startEdit(a1, input, 'cell')
       }}
