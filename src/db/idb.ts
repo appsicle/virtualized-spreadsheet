@@ -143,3 +143,12 @@ export async function mergeRowPatches(
     await wrapTx(tx)
   }
 }
+
+export async function clearRowsStore(): Promise<void> {
+  const db = await openDB()
+  const tx = (db as unknown as { transaction: IDBTransaction }).transaction
+    ? db.transaction(['rows'], 'readwrite', { durability: 'relaxed' as IDBTransactionDurability })
+    : db.transaction(['rows'], 'readwrite')
+  tx.objectStore('rows').clear()
+  await wrapTx(tx)
+}

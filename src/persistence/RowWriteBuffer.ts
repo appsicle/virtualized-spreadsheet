@@ -23,6 +23,7 @@ export class RowWriteBuffer {
   private timer: number | null = null
   private idleId: number | null = null
   private pendingFlush: Promise<void> | null = null
+  private active = false
 
   // row -> Map<col, PatchValue>
   private buffer = new Map<number, Map<number, PatchValue>>()
@@ -36,9 +37,7 @@ export class RowWriteBuffer {
     this.minFlushRows = opts.minFlushRows ?? 1
     this.clock = opts.clock ?? (() => Date.now())
     this.onFlush = opts.onFlush
-    this.startTimers(opts.disableIdleFlush)
-    document.addEventListener('visibilitychange', this.onVisibility)
-    window.addEventListener('pagehide', this.onPageHide)
+    this.resume(opts.disableIdleFlush)
   }
 
   private startTimers(disableIdle?: boolean) {
@@ -51,6 +50,7 @@ export class RowWriteBuffer {
   }
 
   stop() {
+    if (!this.active) return
     if (this.timer != null) {
       clearInterval(this.timer)
       this.timer = null
@@ -61,6 +61,7 @@ export class RowWriteBuffer {
     }
     document.removeEventListener('visibilitychange', this.onVisibility)
     window.removeEventListener('pagehide', this.onPageHide)
+    this.active = false
   }
 
   setPolicy(opts: Partial<RowWriteBufferOptions>) {
@@ -99,6 +100,24 @@ export class RowWriteBuffer {
         this.scheduleIdleFlush()
       }, { timeout: this.flushIntervalMs ?? undefined })
     }
+  }
+
+  resume(disableIdle?: boolean) {
+    if (this.active) return
+    this.startTimers(disableIdle)
+    document.addEventListener('visibilitychange', this.onVisibility)
+    window.addEventListener('pagehide', this.onPageHide)
+    this.active = true
+  }
+
+  async waitForIdle() {
+    if (!this.pendingFlush) return
+    try { await this.pendingFlush } catch { /* ignore */ }
+  }
+
+  clearBuffer() {
+    this.buffer = new Map()
+    this.fullRows = new Set()
   }
 
   enqueuePutA1(a1: string, input: string) {

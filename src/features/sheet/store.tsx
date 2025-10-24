@@ -426,12 +426,17 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
       // Enqueue all generated cells for persistence (batched via buffer)
       const buf = bufferRef.current
       if (buf) {
-        // Enter bulk policy for max throughput
+        // Enter bulk policy for max throughput; also drop any pending buffered edits first
+        buf.stop()
+        await buf.waitForIdle()
+        buf.clearBuffer()
+        buf.resume(true)
         buf.setPolicy({ flushIntervalMs: null, minFlushRows: 10000, maxRowsPerTx: 10000, disableIdleFlush: true })
         buf.enqueueBulkFromCellsMap(cells)
         await buf.flush('smoke')
         // Restore interactive policy
         buf.setPolicy({ flushIntervalMs: 500, minFlushRows: 1, maxRowsPerTx: 5000, disableIdleFlush: false })
+        buf.resume(false)
       }
       const elapsed = performance.now() - t0
       console.log(`Smoke test complete! ${totalCells.toLocaleString()} cells in ${elapsed.toFixed(2)}ms`)
