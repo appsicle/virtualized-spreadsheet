@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from 'react'
+import { useCallback, useRef } from 'react'
 import { useSheetActions, useSheetState } from '@/features/sheet/hooks'
 import { CELL_H, CELL_W, HEADER_H, HEADER_W } from '@/features/sheet/constants'
 import { useDragSelect } from './Cell/hooks/useDragSelect'
@@ -20,7 +20,7 @@ import { SelectionOverlay } from './SelectionOverlay'
 import { HeaderContextMenu } from './HeaderContextMenu'
 
 export default function Grid() {
-  const { dims, selection: storeSelection, cells } = useSheetState()
+  const { dims, selection: storeSelection } = useSheetState()
 
   const {
     setSelection: setSelectionAction,
@@ -190,7 +190,6 @@ export default function Grid() {
             getCellInput={getCellInput}
             onCellSelect={handleCellSelect}
             onCellCommit={handleCellCommit}
-            cellsVersion={cells.size}
           />
 
           <div

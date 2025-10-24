@@ -1,4 +1,4 @@
-import { memo, useEffect } from 'react'
+import { memo } from 'react'
 import { indexToCol } from '@/features/sheet/utils/refs'
 import { isError } from '@/features/sheet/utils/errors'
 import type { Selection, Value } from '@/features/sheet/types'
@@ -22,7 +22,6 @@ interface VirtualCellsProps {
   getCellInput: (a1: string) => string
   onCellSelect: (a1: string, editing: boolean) => void
   onCellCommit: (a1: string, input: string) => void
-  cellsVersion: number
 }
 
 export const VirtualCells = memo(function VirtualCells({
@@ -32,7 +31,6 @@ export const VirtualCells = memo(function VirtualCells({
   getCellInput,
   onCellSelect,
   onCellCommit,
-  cellsVersion,
 }: VirtualCellsProps) {
   const editing = useEditingState()
 
