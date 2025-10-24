@@ -260,6 +260,8 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
       recalcAffected(s, a1)
       // Persist put to buffer
       bufferRef.current?.enqueuePutA1(a1, input)
+      // Proactively start a flush on commit to reduce data loss on refresh
+      bufferRef.current?.flush('commit')
       dispatch({ t: 'setCells', cells: s.cells })
     },
     [state]
@@ -301,6 +303,9 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
       }
 
       recalcAffected(s, seeds, { useExistingAST: true })
+
+      // Proactively start a flush on bulk commit
+      bufferRef.current?.flush('bulk-commit')
 
       // Bump graph identity to notify context consumers without deep cloning maps
       const graphRef = { depsOf: s.graph.depsOf, dependentsOf: s.graph.dependentsOf }
@@ -344,6 +349,7 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
       }
       for (const [a1] of s.cells) evaluateAndUpdate(s, a1, { useExistingAST: true })
       dispatch({ t: 'setCells', cells: s.cells, graph: s.graph })
+      bufferRef.current?.flush('delete-row')
     },
     [state]
   )
@@ -369,6 +375,7 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
       }
       for (const [a1] of s.cells) evaluateAndUpdate(s, a1, { useExistingAST: true })
       dispatch({ t: 'setCells', cells: s.cells, graph: s.graph })
+      bufferRef.current?.flush('delete-col')
     },
     [state]
   )
@@ -378,6 +385,7 @@ export function SheetProvider({ children }: { children: React.ReactNode }) {
     // Persist deletes for all existing cells
     for (const [a1] of state.cells) bufferRef.current?.enqueueDeleteA1(a1)
     dispatch({ t: 'setCells', cells: s.cells, graph: s.graph })
+    bufferRef.current?.flush('clear-all')
   }, [state])
 
   const smokeTest = useCallback(() => {
